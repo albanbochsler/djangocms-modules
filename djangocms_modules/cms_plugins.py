@@ -11,9 +11,7 @@ from django.utils.translation import get_language_from_request
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import ListView
 
-from cms.admin.placeholderadmin import PlaceholderAdmin
 from cms.exceptions import PluginLimitReached
-from cms.models import Placeholder
 from cms.plugin_base import CMSPluginBase, PluginMenuItem
 from cms.plugin_pool import plugin_pool
 from cms.utils.plugins import copy_plugins_to_placeholder, get_bound_plugins, has_reached_plugin_limit
@@ -23,7 +21,7 @@ from .forms import AddModuleForm, CreateModuleForm, NewModuleForm
 from .models import Category, ModulePlugin
 
 
-def _get_attached_admin(placeholder: Placeholder) -> PlaceholderAdmin | None:
+def _get_attached_admin(placeholder):
     placeholder_model = placeholder._get_attached_model()
     if placeholder_model is None:
         return None
@@ -253,8 +251,7 @@ class Module(CMSPluginBase):
         #     operation=operations.ADD_PLUGIN,
         #     plugin=new_module_plugin,
         # )
-
-        last_plugin_position = target_placeholder.get_last_plugin_position(language)
+        last_plugin_position = target_placeholder.get_last_plugin_position(language) or 0
         plugin_kwargs = {
             'plugin_type': cls.__name__,
             'placeholder': target_placeholder,
