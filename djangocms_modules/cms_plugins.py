@@ -1,12 +1,5 @@
 import json
 
-from cms.admin.placeholderadmin import PlaceholderAdmin
-from cms.exceptions import PluginLimitReached
-from cms.models import Placeholder
-from cms.plugin_base import CMSPluginBase, PluginMenuItem
-from cms.plugin_pool import plugin_pool
-from cms.utils.plugins import copy_plugins_to_placeholder, get_bound_plugins, has_reached_plugin_limit
-from cms.utils.urlutils import admin_reverse, add_url_parameters
 from django.contrib.admin import site
 from django.core.exceptions import PermissionDenied
 from django.db.transaction import atomic
@@ -17,6 +10,14 @@ from django.utils.encoding import force_str
 from django.utils.translation import get_language_from_request
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import ListView
+
+from cms.admin.placeholderadmin import PlaceholderAdmin
+from cms.exceptions import PluginLimitReached
+from cms.models import Placeholder
+from cms.plugin_base import CMSPluginBase, PluginMenuItem
+from cms.plugin_pool import plugin_pool
+from cms.utils.plugins import copy_plugins_to_placeholder, get_bound_plugins, has_reached_plugin_limit
+from cms.utils.urlutils import add_url_parameters, admin_reverse
 
 from .forms import AddModuleForm, CreateModuleForm, NewModuleForm
 from .models import Category, ModulePlugin
@@ -211,7 +212,6 @@ class Module(CMSPluginBase):
 
         language = form.cleaned_data['target_language']
         target_placeholder = form.cleaned_data.get('target_placeholder')
-
         if target_placeholder:
             target_plugin = None
         else:
@@ -238,17 +238,9 @@ class Module(CMSPluginBase):
         except PluginLimitReached as er:
             return HttpResponseBadRequest(er)
 
-        tree_order = list(
-            target_placeholder
-            .get_plugins(language)
-            .filter(parent=target_plugin)
-            .order_by("position")
-            .values_list("pk", flat=True)
-        )
-
         # module_admin = _get_attached_admin(module_plugin.placeholder)
-        ## This is needed only because we of the operation signal requiring
-        ## a version of the plugin that's not been committed to the db yet.
+        # # This is needed only because we of the operation signal requiring
+        # # a version of the plugin that's not been committed to the db yet.
         # new_module_plugin = copy.copy(module_plugin)
         # new_module_plugin.pk = None
         # new_module_plugin.placeholder = target_placeholder
@@ -261,11 +253,14 @@ class Module(CMSPluginBase):
         #     operation=operations.ADD_PLUGIN,
         #     plugin=new_module_plugin,
         # )
+
+        last_plugin_position = target_placeholder.get_last_plugin_position(language)
         plugin_kwargs = {
             'plugin_type': cls.__name__,
             'placeholder': target_placeholder,
             'language': language,
-            'position': len(tree_order) + 1,
+            'position': last_plugin_position + 1,
+            'parent': target_plugin,
         }
         new_module_plugin_instance = cls.model(
             module_name=module_plugin.module_name,
@@ -273,14 +268,13 @@ class Module(CMSPluginBase):
             **plugin_kwargs,
         )
         new_plugin = target_placeholder.add_plugin(new_module_plugin_instance)
+        plugins_to_copy = list(module_plugin.get_descendants())
         copy_plugins_to_placeholder(
-            plugins=list(module_plugin.get_unbound_plugins()),
+            plugins=plugins_to_copy,
             placeholder=target_placeholder,
             language=language,
-            root_plugin=target_plugin,
+            root_plugin=new_plugin,
         )
-
-        new_module_plugin = cls.model.objects.get(pk=new_plugin.pk)
 
         # module_admin._send_post_placeholder_operation(
         #     request,
@@ -291,7 +285,7 @@ class Module(CMSPluginBase):
         #     tree_order=tree_order,
         # )
 
-        response = cls().render_close_frame(request, obj=new_module_plugin)
+        response = cls().render_close_frame(request, obj=new_plugin)
 
         if form.cleaned_data.get('disable_future_confirmation'):
             response.set_cookie(key=cls.confirmation_cookie_name, value=True)

@@ -5,9 +5,8 @@ from djangocms_modules import __version__
 
 
 REQUIREMENTS = [
-    'django-cms>=3.7',
+    'django-cms>=4.1.3',
     'djangocms-history',
-    'django-treebeard>=4.3,<4.5',
 ]
 
 
