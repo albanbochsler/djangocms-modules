@@ -1,6 +1,12 @@
 #!/usr/bin/env python
 HELPER_SETTINGS = {
-    'INSTALLED_APPS': [],
+    'INSTALLED_APPS': [
+        'djangocms_versioning',
+        'djangocms_text',
+    ],
+    'TEMPLATE_DIRS': [
+        'djangocms_modules/templates',
+    ],
     'CMS_LANGUAGES': {
         1: [{
             'code': 'en',
@@ -9,6 +15,7 @@ HELPER_SETTINGS = {
     },
     'LANGUAGE_CODE': 'en',
     'ALLOWED_HOSTS': ['localhost'],
+    'CMS_CONFIRM_VERSION4': True,
 }
 
 
