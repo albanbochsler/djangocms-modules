@@ -72,7 +72,7 @@ class CreateModuleForm(NewModuleForm):
             language = self.cleaned_data['language']
             plugins = placeholder.get_plugins(language)
         else:
-            plugins = plugin.get_tree(plugin).order_by('path')
+            plugins = [plugin] + list(plugin.get_descendants())
         return list(plugins)
 
 

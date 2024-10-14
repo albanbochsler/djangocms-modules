@@ -1,27 +1,33 @@
-import copy
 import json
 
-from django.conf import settings
+from cms.admin.placeholderadmin import PlaceholderAdmin
+from cms.exceptions import PluginLimitReached
+from cms.models import Placeholder
+from cms.plugin_base import CMSPluginBase, PluginMenuItem
+from cms.plugin_pool import plugin_pool
+from cms.utils.plugins import copy_plugins_to_placeholder, get_bound_plugins, has_reached_plugin_limit
+from cms.utils.urlutils import admin_reverse, add_url_parameters
+from django.contrib.admin import site
 from django.core.exceptions import PermissionDenied
+from django.db.transaction import atomic
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, render
 from django.urls import path, reverse
 from django.utils.encoding import force_str
-from django.utils.http import urlencode
 from django.utils.translation import get_language_from_request
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import ListView
 
-from cms import operations
-from cms.exceptions import PluginLimitReached
-from cms.models import CMSPlugin
-from cms.plugin_base import CMSPluginBase, PluginMenuItem
-from cms.plugin_pool import plugin_pool
-from cms.utils.plugins import copy_plugins_to_placeholder, get_bound_plugins, has_reached_plugin_limit, reorder_plugins
-from cms.utils.urlutils import admin_reverse
-
 from .forms import AddModuleForm, CreateModuleForm, NewModuleForm
 from .models import Category, ModulePlugin
+
+
+def _get_attached_admin(placeholder: Placeholder) -> PlaceholderAdmin | None:
+    placeholder_model = placeholder._get_attached_model()
+    if placeholder_model is None:
+        return None
+
+    return site._registry.get(placeholder_model)
 
 
 def post_add_plugin(operation, **kwargs):
@@ -73,7 +79,7 @@ class Module(CMSPluginBase):
             'language': get_language_from_request(request, check_path=True),
             'plugin': plugin.pk,
         }
-        endpoint = admin_reverse('cms_create_module') + '?' + urlencode(data)
+        endpoint = add_url_parameters(admin_reverse('cms_create_module'), **data)
         return [
             PluginMenuItem(
                 _('Create module'),
@@ -91,7 +97,7 @@ class Module(CMSPluginBase):
             'language': get_language_from_request(request, check_path=True),
             'placeholder': placeholder.pk,
         }
-        endpoint = admin_reverse('cms_create_module') + '?' + urlencode(data)
+        endpoint = add_url_parameters(admin_reverse('cms_create_module'), **data)
         return [
             PluginMenuItem(
                 _('Create module'),
@@ -104,27 +110,31 @@ class Module(CMSPluginBase):
         ]
 
     @classmethod
-    def create_module_plugin(cls, name, category, plugins):
+    def create_module_plugin(cls, name, category, plugins, language):
         placeholder = category.modules
-        position = placeholder.get_plugins().filter(parent__isnull=True).count()
+        current_plugins_count = placeholder.get_plugins().filter(parent__isnull=True).count()
         plugin_kwargs = {
             'plugin_type': cls.__name__,
             'placeholder_id': category.modules_id,
-            'language': settings.LANGUAGE_CODE,
-            'position': position,
+            'language': language,
+            'position': current_plugins_count + 1,
         }
-        plugin = CMSPlugin.add_root(**plugin_kwargs)
-        instance = cls.model(module_name=name, module_category=category)
-        plugin.set_base_attr(instance)
-        instance.save()
+        new_module_plugin_instance = cls.model(
+            module_name=name,
+            module_category=category,
+            **plugin_kwargs,
+        )
+        new_plugin = placeholder.add_plugin(new_module_plugin_instance)
+
         copy_plugins_to_placeholder(
             plugins,
             placeholder=placeholder,
-            language=plugin.language,
-            root_plugin=plugin,
+            language=new_plugin.language,
+            root_plugin=new_plugin,
         )
 
     @classmethod
+    @atomic
     def create_module_view(cls, request):
         if not request.user.is_staff:
             raise PermissionDenied
@@ -162,14 +172,16 @@ class Module(CMSPluginBase):
 
         name = create_form.cleaned_data['name']
         category = create_form.cleaned_data['category']
+        language = create_form.cleaned_data['language']
 
         if not category.modules.has_add_plugins_permission(request.user, plugins):
             raise PermissionDenied
 
-        cls.create_module_plugin(name=name, category=category, plugins=plugins)
+        cls.create_module_plugin(name=name, category=category, plugins=plugins, language=language)
         return HttpResponse('<div><div class="messagelist"><div class="success"></div></div></div>')
 
     @classmethod
+    @atomic
     def add_module_view(cls, request, module_id):
         if not request.user.is_staff:
             raise PermissionDenied
@@ -211,12 +223,10 @@ class Module(CMSPluginBase):
                 force_str(_('You do not have permission to add a plugin.'))
             )
 
-        pl_admin = target_placeholder._get_attached_admin()
-
-        if pl_admin:
-            template = pl_admin.get_placeholder_template(request, target_placeholder)
-        else:
-            template = None
+        placeholder_admin = _get_attached_admin(target_placeholder)
+        template = None
+        if placeholder_admin is not None and hasattr(placeholder_admin, "get_placeholder_template"):
+            template = placeholder_admin.get_placeholder_template(request, target_placeholder)
 
         try:
             has_reached_plugin_limit(
@@ -228,52 +238,58 @@ class Module(CMSPluginBase):
         except PluginLimitReached as er:
             return HttpResponseBadRequest(er)
 
-        tree_order = target_placeholder.get_plugin_tree_order(
-            language=language,
-            parent_id=target_plugin,
+        tree_order = list(
+            target_placeholder
+            .get_plugins(language)
+            .filter(parent=target_plugin)
+            .order_by("position")
+            .values_list("pk", flat=True)
         )
 
-        m_admin = module_plugin.placeholder._get_attached_admin()
-
-        # This is needed only because we of the operation signal requiring
-        # a version of the plugin that's not been committed to the db yet.
-        new_module_plugin = copy.copy(module_plugin)
-        new_module_plugin.pk = None
-        new_module_plugin.placeholder = target_placeholder
-        new_module_plugin.parent = None
-        new_module_plugin.position = len(tree_order) + 1
-
-        operation_token = m_admin._send_pre_placeholder_operation(
-            request=request,
-            placeholder=target_placeholder,
-            tree_order=tree_order,
-            operation=operations.ADD_PLUGIN,
-            plugin=new_module_plugin,
+        # module_admin = _get_attached_admin(module_plugin.placeholder)
+        ## This is needed only because we of the operation signal requiring
+        ## a version of the plugin that's not been committed to the db yet.
+        # new_module_plugin = copy.copy(module_plugin)
+        # new_module_plugin.pk = None
+        # new_module_plugin.placeholder = target_placeholder
+        # new_module_plugin.parent = None
+        # new_module_plugin.position = len(tree_order) + 1
+        # operation_token = module_admin._send_pre_placeholder_operation(
+        #     request=request,
+        #     placeholder=target_placeholder,
+        #     tree_order=tree_order,
+        #     operation=operations.ADD_PLUGIN,
+        #     plugin=new_module_plugin,
+        # )
+        plugin_kwargs = {
+            'plugin_type': cls.__name__,
+            'placeholder': target_placeholder,
+            'language': language,
+            'position': len(tree_order) + 1,
+        }
+        new_module_plugin_instance = cls.model(
+            module_name=module_plugin.module_name,
+            module_category=module_plugin.module_category,
+            **plugin_kwargs,
         )
-
-        new_plugins = copy_plugins_to_placeholder(
+        new_plugin = target_placeholder.add_plugin(new_module_plugin_instance)
+        copy_plugins_to_placeholder(
             plugins=list(module_plugin.get_unbound_plugins()),
             placeholder=target_placeholder,
             language=language,
             root_plugin=target_plugin,
         )
-        tree_order.append(new_plugins[0].pk)
-        reorder_plugins(
-            target_placeholder,
-            parent_id=target_plugin,
-            language=language,
-            order=tree_order,
-        )
-        new_module_plugin = cls.model.objects.get(pk=new_plugins[0].pk)
 
-        m_admin._send_post_placeholder_operation(
-            request,
-            operation=operations.ADD_PLUGIN,
-            token=operation_token,
-            plugin=new_module_plugin,
-            placeholder=new_module_plugin.placeholder,
-            tree_order=tree_order,
-        )
+        new_module_plugin = cls.model.objects.get(pk=new_plugin.pk)
+
+        # module_admin._send_post_placeholder_operation(
+        #     request,
+        #     operation=operations.ADD_PLUGIN,
+        #     token=operation_token,
+        #     plugin=new_module_plugin,
+        #     placeholder=new_module_plugin.placeholder,
+        #     tree_order=tree_order,
+        # )
 
         response = cls().render_close_frame(request, obj=new_module_plugin)
 

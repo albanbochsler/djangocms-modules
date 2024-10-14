@@ -80,8 +80,8 @@ class Category(models.Model):
         unbound_plugins = (
             self
             .modules
-            .get_plugins(language=settings.LANGUAGE_CODE)
-            .filter(parent__isnull=True, numchild__gte=1)
+            .get_plugins()  # TODO: filter by current language?
+            .filter(parent__isnull=True)
         )
         return get_bound_plugins(unbound_plugins)
 
@@ -129,4 +129,4 @@ class ModulePlugin(CMSPlugin):
         return
 
     def get_unbound_plugins(self):
-        return CMSPlugin.get_tree(self).order_by('path')
+        return self.cmsplugin_set.filter(language=self.language).order_by("position")
