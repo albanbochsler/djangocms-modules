@@ -1,4 +1,3 @@
-from django.conf import settings
 from django.db import models
 from django.dispatch import receiver
 from django.urls import Resolver404, resolve
@@ -7,13 +6,9 @@ from django.utils.translation import gettext_lazy as _
 
 from cms import operations
 from cms.models import CMSPlugin, Placeholder
-from cms.models.fields import PlaceholderField
+from cms.models.fields import PlaceholderRelationField
 from cms.signals import pre_placeholder_operation
 from cms.utils.plugins import get_bound_plugins
-
-
-def _get_placeholder_slot(category):
-    return f'module-category-{category.pk}'
 
 
 @receiver(pre_placeholder_operation)
@@ -58,12 +53,14 @@ def sync_module_plugin(sender, **kwargs):
 
 
 class Category(models.Model):
+    PLACEHOLDER_SLOT_NAME = "module-category"
+
     name = models.CharField(
         verbose_name=_('Name'),
         max_length=120,
         unique=True,
     )
-    modules = PlaceholderField(slotname=_get_placeholder_slot)
+    placeholders = PlaceholderRelationField()
 
     class Meta:
         verbose_name = _('Category')
@@ -74,12 +71,14 @@ class Category(models.Model):
 
     @cached_property
     def modules_placeholder(self):
-        return ModulesPlaceholder.objects.get(pk=self.modules_id)
+        from cms.utils.placeholder import get_placeholder_from_slot
+
+        return get_placeholder_from_slot(self.placeholders, self.PLACEHOLDER_SLOT_NAME)
 
     def get_non_empty_modules(self):
         unbound_plugins = (
             self
-            .modules
+            .modules_placeholder
             .get_plugins()  # TODO: filter by current language?
             .filter(parent__isnull=True)
         )

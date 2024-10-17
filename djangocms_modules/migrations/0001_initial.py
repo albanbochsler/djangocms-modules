@@ -47,6 +47,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='category',
             name='modules',
-            field=cms.models.fields.PlaceholderField(slotname=djangocms_modules.models._get_placeholder_slot, editable=False, to='cms.Placeholder', null=True),
+            field=cms.models.fields.PlaceholderField(slotname="module-category", editable=False, to='cms.Placeholder', null=True),
         ),
     ]

@@ -110,11 +110,11 @@ class Module(CMSPluginBase):
 
     @classmethod
     def create_module_plugin(cls, name, category, plugins, language):
-        placeholder = category.modules
+        placeholder = category.modules_placeholder
         current_plugins_count = placeholder.get_plugins().filter(parent__isnull=True).count()
         plugin_kwargs = {
             'plugin_type': cls.__name__,
-            'placeholder_id': category.modules_id,
+            'placeholder_id': placeholder.id,
             'language': language,
             'position': current_plugins_count + 1,
         }
@@ -173,7 +173,7 @@ class Module(CMSPluginBase):
         category = create_form.cleaned_data['category']
         language = create_form.cleaned_data['language']
 
-        if not category.modules.has_add_plugins_permission(request.user, plugins):
+        if not category.modules_placeholder.has_add_plugins_permission(request.user, plugins):
             raise PermissionDenied
 
         cls.create_module_plugin(name=name, category=category, plugins=plugins, language=language)
