@@ -1,5 +1,6 @@
 import json
 
+from django.conf import settings
 from django.contrib.admin import site
 from django.core.exceptions import PermissionDenied
 from django.db.transaction import atomic
@@ -109,13 +110,13 @@ class Module(CMSPluginBase):
         ]
 
     @classmethod
-    def create_module_plugin(cls, name, category, plugins, language):
+    def create_module_plugin(cls, name, category, plugins):
         placeholder = category.modules_placeholder
         current_plugins_count = placeholder.get_plugins().filter(parent__isnull=True).count()
         plugin_kwargs = {
             'plugin_type': cls.__name__,
             'placeholder_id': placeholder.id,
-            'language': language,
+            'language': settings.LANGUAGE_CODE,
             'position': current_plugins_count + 1,
         }
         new_module_plugin_instance = cls.model(
@@ -171,12 +172,11 @@ class Module(CMSPluginBase):
 
         name = create_form.cleaned_data['name']
         category = create_form.cleaned_data['category']
-        language = create_form.cleaned_data['language']
 
         if not category.modules_placeholder.has_add_plugins_permission(request.user, plugins):
             raise PermissionDenied
 
-        cls.create_module_plugin(name=name, category=category, plugins=plugins, language=language)
+        cls.create_module_plugin(name=name, category=category, plugins=plugins)
         return HttpResponse('<div><div class="messagelist"><div class="success"></div></div></div>')
 
     @classmethod
