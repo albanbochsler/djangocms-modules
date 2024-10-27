@@ -1,0 +1,11 @@
+{% extends "djangocms_modules/base.html" %}
+{% load cms_tags djangocms_modules_tags %}
+
+{% block modules_content %}
+    <div class="cms-modules-page container">
+        <h1 class="cms-modules-page-h1"><a href="{% url "pages-root" %}">Modules</a></h1>
+        <hr>
+        {% get_default_language as default_language %}
+        {% render_placeholder object.modules_placeholder object.app_context language default_language %}
+    </div>
+{% endblock modules_content %}

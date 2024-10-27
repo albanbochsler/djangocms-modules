@@ -84,6 +84,14 @@ class Category(models.Model):
         )
         return get_bound_plugins(unbound_plugins)
 
+    def get_template(self):
+        return "djangocms_modules/modules_structure_mode.html"
+
+    @cached_property
+    def app_context(self):
+        return {
+            'modules_page': True,
+        }
 
 class ModulesPlaceholder(Placeholder):
 

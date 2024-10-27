@@ -11,7 +11,7 @@ from cms.utils.urlutils import admin_reverse
 SHORTCUTS_BREAK = 'Shortcuts Break'
 
 
-@toolbar_pool.register
+# @toolbar_pool.register
 class ModulesToolbar(CMSToolbar):
     """
     Adds a Modules menu-item into django CMS's "ADMIN" (first) menu.

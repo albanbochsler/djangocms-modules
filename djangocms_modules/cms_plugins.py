@@ -59,6 +59,15 @@ class Module(CMSPluginBase):
         'post_add_plugin': post_add_plugin,
     }
 
+    def render(self, context, instance, placeholder):
+        context = super().render(context, instance, placeholder)
+        if "modules_page" in context["width"]:
+            context.update({
+                "modules_page": True
+            })
+        return context
+
+
     def has_add_permission(self, request):
         return False
 
