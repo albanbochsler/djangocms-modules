@@ -11,7 +11,7 @@ from cms.utils.urlutils import admin_reverse
 SHORTCUTS_BREAK = 'Shortcuts Break'
 
 
-# @toolbar_pool.register
+@toolbar_pool.register
 class ModulesToolbar(CMSToolbar):
     """
     Adds a Modules menu-item into django CMS's "ADMIN" (first) menu.
@@ -48,11 +48,11 @@ class ModulesToolbar(CMSToolbar):
                 pass
         return end.index
 
-    def populate(self):
-        modules = _('Modules')
-        admin_menu = self.toolbar.get_or_create_menu(ADMIN_MENU_IDENTIFIER)
-        admin_menu.add_link_item(
-            modules,
-            url=admin_reverse('cms_modules_list'),
-            position=self.get_insert_position(admin_menu, modules)
-        )
+    # def populate(self):
+    #     modules = _('Modules')
+    #     admin_menu = self.toolbar.get_or_create_menu(ADMIN_MENU_IDENTIFIER)
+    #     admin_menu.add_link_item(
+    #         modules,
+    #         url=admin_reverse('cms_modules_list'),
+    #         position=self.get_insert_position(admin_menu, modules)
+    #     )
