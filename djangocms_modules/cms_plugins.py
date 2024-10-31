@@ -61,7 +61,12 @@ class Module(CMSPluginBase):
 
     def render(self, context, instance, placeholder):
         context = super().render(context, instance, placeholder)
-        if "modules_page" in context["width"]:
+        try:
+            extra_context = context['width']
+        except KeyError:
+            extra_context = {}
+
+        if "modules_page" in extra_context:
             context.update({
                 "modules_page": True
             })
